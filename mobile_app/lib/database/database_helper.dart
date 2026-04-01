@@ -36,10 +36,21 @@ class DatabaseHelper {
     ''');
   }
 
-  Future<int> insertProduct(Product product) async {
-    final db = await instance.database;
-    return await db.insert('products', product.toMap());
-  }
+ Future<int> insertProduct(Product product) async {
+
+  final db = await instance.database;
+
+  print("INSERTING PRODUCT...");
+  print(product.name);
+  print(product.price);
+  print(product.quantity);
+
+  final result = await db.insert('products', product.toMap());
+
+  print("PRODUCT INSERTED ID: $result");
+
+  return result;
+}
 
   Future<List<Product>> getProducts() async {
     final db = await instance.database;
