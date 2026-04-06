@@ -1,5 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/product.dart';
 
 class DatabaseHelper {
@@ -15,8 +17,7 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDB(String filePath) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+    final path = kIsWeb ? 'duka_smart' : join(Directory.current.path, filePath);
 
     return await openDatabase(
       path,

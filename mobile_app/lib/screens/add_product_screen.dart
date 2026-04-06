@@ -28,19 +28,35 @@ class _AddProductScreenState extends State<AddProductScreen> {
       return;
     }
 
+    final price = double.tryParse(priceController.text);
+    final quantity = int.tryParse(quantityController.text);
+
+    if (price == null || quantity == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter valid numbers for price and quantity")),
+      );
+      return;
+    }
+
     final product = Product(
       name: nameController.text,
-      price: double.parse(priceController.text),
-      quantity: int.parse(quantityController.text),
+      price: price,
+      quantity: quantity,
     );
 
-    await DatabaseHelper.instance.insertProduct(product);
+    try {
+      await DatabaseHelper.instance.insertProduct(product);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Product Saved")),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Product Saved")),
+      );
 
-    Navigator.pop(context);
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error saving product: $e")),
+      );
+    }
   }
 
   @override

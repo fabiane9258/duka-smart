@@ -31,6 +31,8 @@ dependencies:
   flutter:
     sdk: flutter
   sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.3.0
+  sqflite_common_ffi_web: ^0.4.0
   path: ^1.8.3
 
   # The following adds the Cupertino Icons font to your application.
@@ -48,10 +50,6 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
-# For information on the generic Dart part of this file, see the
-# following page: https://dart.dev/tools/pub/pubspec
-
-# The following section is specific to Flutter packages.
 flutter:
 
   # The following line ensures that the Material Icons font is
