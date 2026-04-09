@@ -12,11 +12,19 @@ class NewSaleScreen extends StatefulWidget {
 class _NewSaleScreenState extends State<NewSaleScreen> {
   List<Product> products = [];
   bool isLoading = true;
+  final Map<int, int> cart = {};
+  final TextEditingController paidController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     loadProducts();
+  }
+
+  @override
+  void dispose() {
+    paidController.dispose();
+    super.dispose();
   }
 
   Future<void> loadProducts() async {
@@ -36,82 +44,106 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     }
   }
 
-  void showSaleDialog(Product product) {
-    final qtyController = TextEditingController();
+  int _cartQty(Product product) => cart[product.id ?? -1] ?? 0;
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text("Sell ${product.name}"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text("Available: ${product.quantity}"),
-              const SizedBox(height: 16),
-              TextField(
-                controller: qtyController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: "Quantity to sell",
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              child: const Text("Cancel"),
-              onPressed: () => Navigator.pop(context),
-            ),
-            ElevatedButton(
-              child: const Text("Sell"),
-              onPressed: () async {
-                final qty = int.tryParse(qtyController.text);
-                if (qty == null || qty <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Please enter a valid quantity")),
-                  );
-                  return;
-                }
+  void _increaseQty(Product product) {
+    if (product.id == null || product.quantity <= 0) return;
+    final current = _cartQty(product);
+    if (current >= product.quantity) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Only ${product.quantity} ${product.name}(s) in stock")),
+      );
+      return;
+    }
+    setState(() {
+      cart[product.id!] = current + 1;
+    });
+  }
 
-                if (qty > product.quantity) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Not enough stock available")),
-                  );
-                  return;
-                }
+  void _decreaseQty(Product product) {
+    if (product.id == null) return;
+    final current = _cartQty(product);
+    if (current <= 0) return;
+    setState(() {
+      final next = current - 1;
+      if (next == 0) {
+        cart.remove(product.id!);
+      } else {
+        cart[product.id!] = next;
+      }
+    });
+  }
 
-                try {
-                  // Update product quantity
-                  final updatedProduct = Product(
-                    id: product.id,
-                    name: product.name,
-                    price: product.price,
-                    quantity: product.quantity - qty,
-                  );
+  double get totalBill {
+    double total = 0;
+    for (final product in products) {
+      if (product.id == null) continue;
+      total += product.price * (cart[product.id!] ?? 0);
+    }
+    return total;
+  }
 
-                  await DatabaseHelper.instance.updateProduct(updatedProduct);
+  double get amountPaid => double.tryParse(paidController.text.trim()) ?? 0;
 
-                  // Refresh product list
-                  await loadProducts();
+  double get balance => amountPaid - totalBill;
 
-                  Navigator.pop(context);
+  Future<void> _checkout() async {
+    if (cart.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Cart is empty")),
+      );
+      return;
+    }
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Sold $qty ${product.name}(s)")),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Error processing sale: $e")),
-                  );
-                }
-              },
-            ),
-          ],
+    if (amountPaid < totalBill) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Amount paid is less than total bill")),
+      );
+      return;
+    }
+
+    for (final product in products) {
+      if (product.id == null) continue;
+      final qtyInCart = cart[product.id!] ?? 0;
+      if (qtyInCart > product.quantity) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Not enough stock for ${product.name}")),
         );
-      },
-    );
+        return;
+      }
+    }
+
+    try {
+      final checkoutCart = Map<int, int>.from(cart);
+      await DatabaseHelper.instance.saveSale(
+        products: products,
+        cart: checkoutCart,
+        totalAmount: totalBill,
+        amountPaid: amountPaid,
+        changeAmount: balance,
+      );
+
+      final soldItems = checkoutCart.values.fold<int>(0, (sum, qty) => sum + qty);
+      final change = balance;
+      setState(() {
+        cart.clear();
+        paidController.clear();
+      });
+      await loadProducts();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Checkout complete: $soldItems item(s). Change: \$${change.toStringAsFixed(2)}",
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error during checkout: $e")),
+      );
+    }
   }
 
   @override
@@ -131,34 +163,109 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                     style: TextStyle(fontSize: 16),
                   ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: products.length,
-                  itemBuilder: (context, index) {
-                    final product = products[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        title: Text(
-                          product.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          "Price: \$${product.price.toStringAsFixed(2)} | Stock: ${product.quantity}",
-                        ),
-                        trailing: product.quantity > 0
-                            ? ElevatedButton(
-                                onPressed: () => showSaleDialog(product),
-                                child: const Text("Sell"),
-                              )
-                            : const Text(
-                                "Out of Stock",
-                                style: TextStyle(color: Colors.red),
+              : Column(
+                  children: [
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: products.length,
+                        itemBuilder: (context, index) {
+                          final product = products[index];
+                          final qty = _cartQty(product);
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            child: ListTile(
+                              title: Text(
+                                product.name,
+                                style: const TextStyle(fontWeight: FontWeight.w600),
                               ),
-                        onTap: product.quantity > 0 ? () => showSaleDialog(product) : null,
+                              subtitle: Text(
+                                "\$${product.price.toStringAsFixed(2)}   Stock: ${product.quantity}",
+                              ),
+                              trailing: product.quantity <= 0
+                                  ? const Text(
+                                      "Out of stock",
+                                      style: TextStyle(color: Colors.red),
+                                    )
+                                  : SizedBox(
+                                      width: 128,
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          IconButton(
+                                            onPressed: () => _decreaseQty(product),
+                                            icon: const Icon(Icons.remove_circle_outline),
+                                          ),
+                                          Text(
+                                            "$qty",
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            onPressed: () => _increaseQty(product),
+                                            icon: const Icon(Icons.add_circle_outline),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        border: const Border(
+                          top: BorderSide(color: Colors.black12),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            "Total Bill: \$${totalBill.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: paidController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              labelText: "Amount Paid",
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            balance >= 0
+                                ? "Change: \$${balance.toStringAsFixed(2)}"
+                                : "Balance Due: \$${balance.abs().toStringAsFixed(2)}",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: balance >= 0 ? Colors.green : Colors.red,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 46,
+                            child: ElevatedButton(
+                              onPressed: cart.isEmpty ? null : _checkout,
+                              child: const Text("Checkout"),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
     );
   }

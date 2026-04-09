@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'add_product_screen.dart';
 import 'product_list_screen.dart';
 import 'new_sale_screen.dart';
+import 'sales_history_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -65,6 +66,19 @@ class HomeScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => const ProductListScreen(),
+                  ),
+                );
+              },
+            ),
+
+            DashboardButton(
+              title: "Sales History",
+              icon: Icons.receipt_long,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SalesHistoryScreen(),
                   ),
                 );
               },
