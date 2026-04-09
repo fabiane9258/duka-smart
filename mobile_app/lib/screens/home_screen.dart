@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'add_product_screen.dart';
 import 'product_list_screen.dart';
+import 'new_sale_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -27,7 +28,14 @@ class HomeScreen extends StatelessWidget {
             DashboardButton(
               title: "New Sale",
               icon: Icons.point_of_sale,
-              onTap: () {},
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NewSaleScreen(),
+                  ),
+                );
+              },
             ),
 
             DashboardButton(

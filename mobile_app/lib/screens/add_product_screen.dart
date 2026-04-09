@@ -51,7 +51,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
         const SnackBar(content: Text("Product Saved")),
       );
 
-      Navigator.pop(context);
+      // Clear form fields for next product
+      nameController.clear();
+      priceController.clear();
+      quantityController.clear();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error saving product: $e")),
