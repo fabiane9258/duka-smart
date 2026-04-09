@@ -27,20 +27,26 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
     super.dispose();
   }
 
-  Future<void> loadProducts() async {
+  /// Returns true if products were loaded and state was updated; false if
+  /// unmounted or an error occurred (error snackbar is shown on failure).
+  Future<bool> loadProducts() async {
     try {
       final data = await DatabaseHelper.instance.getProducts();
+      if (!mounted) return false;
       setState(() {
         products = data;
         isLoading = false;
       });
+      return true;
     } catch (e) {
+      if (!mounted) return false;
       setState(() {
         isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error loading products: $e")),
       );
+      return false;
     }
   }
 
@@ -125,17 +131,23 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
 
       final soldItems = checkoutCart.values.fold<int>(0, (sum, qty) => sum + qty);
       final change = balance;
+
+      // Reload inventory first so we never clear the cart while the list is still stale.
+      final reloaded = await loadProducts();
+      if (!mounted) return;
+
       setState(() {
         cart.clear();
         paidController.clear();
       });
-      await loadProducts();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            "Checkout complete: $soldItems item(s). Change: \$${change.toStringAsFixed(2)}",
+            reloaded
+                ? "Checkout complete: $soldItems item(s). Change: \$${change.toStringAsFixed(2)}"
+                : "Sale saved ($soldItems item(s)). Could not refresh inventory — reopen this screen if stock looks wrong.",
           ),
         ),
       );
