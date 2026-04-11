@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../app_settings.dart';
 import '../constants/stock_thresholds.dart';
 import '../database/database_helper.dart';
 import '../l10n/app_strings.dart';
@@ -229,7 +228,6 @@ class LandingTabState extends State<LandingTab> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final s = AppStrings.of(context);
-    final settings = AppSettingsScope.of(context);
 
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -257,26 +255,6 @@ class LandingTabState extends State<LandingTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  IconButton.filledTonal(
-                                    style: IconButton.styleFrom(
-                                      visualDensity: VisualDensity.compact,
-                                    ),
-                                    tooltip: settings.isDark
-                                        ? s.lightMode
-                                        : s.darkMode,
-                                    onPressed: () => settings.toggleTheme(),
-                                    icon: Icon(
-                                      settings.isDark
-                                          ? Icons.light_mode_outlined
-                                          : Icons.dark_mode_outlined,
-                                      size: 22,
-                                    ),
-                                  ),
-                                ],
-                              ),
                               Text(
                                 _greeting(s),
                                 maxLines: 2,

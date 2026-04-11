@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app_settings.dart';
 import '../l10n/app_strings.dart';
 import 'landing_tab.dart';
 import 'product_list_screen.dart';
@@ -35,6 +36,24 @@ class _MainShellScreenState extends State<MainShellScreen> {
     if (i == 0) {
       _landingKey.currentState?.loadOverview();
     }
+  }
+
+  /// Shown in the app bar / wide header on Home, aligned with the DukaSmart title.
+  List<Widget>? _homeThemeActions(BuildContext context) {
+    if (_index != 0) return null;
+    final s = AppStrings.of(context);
+    final settings = AppSettingsScope.of(context);
+    return [
+      IconButton.filledTonal(
+        tooltip: settings.isDark ? s.lightMode : s.darkMode,
+        onPressed: () => settings.toggleTheme(),
+        icon: Icon(
+          settings.isDark
+              ? Icons.light_mode_outlined
+              : Icons.dark_mode_outlined,
+        ),
+      ),
+    ];
   }
 
   @override
@@ -112,12 +131,23 @@ class _MainShellScreenState extends State<MainShellScreen> {
                       Material(
                         color: bg,
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-                          child: Text(
-                            _title(s, _index),
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
+                          padding: const EdgeInsets.fromLTRB(24, 16, 16, 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _title(s, _index),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                 ),
+                              ),
+                              ...?_homeThemeActions(context),
+                            ],
                           ),
                         ),
                       ),
@@ -140,6 +170,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           appBar: AppBar(
             title: Text(_title(s, _index)),
+            actions: _homeThemeActions(context),
           ),
           body: IndexedStack(
             index: _index,
