@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
+import '../l10n/app_strings.dart';
 import '../models/product.dart';
+import '../utils/currency.dart';
 
 class NewSaleScreen extends StatefulWidget {
   const NewSaleScreen({super.key});
@@ -94,16 +96,17 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   double get balance => amountPaid - totalBill;
 
   Future<void> _checkout() async {
+    final s = AppStrings.of(context);
     if (cart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Cart is empty")),
+        SnackBar(content: Text(s.cartEmpty)),
       );
       return;
     }
 
     if (amountPaid < totalBill) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Amount paid is less than total bill")),
+        SnackBar(content: Text(s.payLessThanTotal)),
       );
       return;
     }
@@ -113,7 +116,7 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       final qtyInCart = cart[product.id!] ?? 0;
       if (qtyInCart > product.quantity) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Not enough stock for ${product.name}")),
+          SnackBar(content: Text('${s.notEnoughStock} ${product.name}')),
         );
         return;
       }
@@ -142,37 +145,40 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
       });
 
       if (!mounted) return;
+      final msg = AppStrings.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             reloaded
-                ? "Checkout complete: $soldItems item(s). Change: \$${change.toStringAsFixed(2)}"
-                : "Sale saved ($soldItems item(s)). Could not refresh inventory — reopen this screen if stock looks wrong.",
+                ? msg.checkoutComplete(soldItems, formatKes(change))
+                : msg.saleSavedPartial(soldItems),
           ),
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error during checkout: $e")),
+        SnackBar(content: Text('$e')),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text("New Sale - POS"),
+        title: Text(s.newSalePos),
         centerTitle: true,
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : products.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
-                    "No products available\nAdd products first",
+                    s.noProductsForSale,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16),
+                    style: const TextStyle(fontSize: 16),
                   ),
                 )
               : Column(
@@ -192,12 +198,14 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                                 style: const TextStyle(fontWeight: FontWeight.w600),
                               ),
                               subtitle: Text(
-                                "\$${product.price.toStringAsFixed(2)}   Stock: ${product.quantity}",
+                                "${formatKes(product.price)}   ${s.stockLabel}: ${product.quantity}",
                               ),
                               trailing: product.quantity <= 0
-                                  ? const Text(
-                                      "Out of stock",
-                                      style: TextStyle(color: Colors.red),
+                                  ? Text(
+                                      s.outOfStock,
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                      ),
                                     )
                                   : SizedBox(
                                       width: 128,
@@ -230,16 +238,19 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        border: const Border(
-                          top: BorderSide(color: Colors.black12),
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withOpacity(0.6),
+                        border: Border(
+                          top: BorderSide(
+                            color: theme.colorScheme.outlineVariant,
+                          ),
                         ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            "Total Bill: \$${totalBill.toStringAsFixed(2)}",
+                            "${s.totalBillLabel}: ${formatKes(totalBill)}",
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -250,28 +261,29 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                             controller: paidController,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              labelText: "Amount Paid",
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: s.amountPaid,
                             ),
                           ),
                           const SizedBox(height: 10),
                           Text(
                             balance >= 0
-                                ? "Change: \$${balance.toStringAsFixed(2)}"
-                                : "Balance Due: \$${balance.abs().toStringAsFixed(2)}",
+                                ? "${s.changeLabel}: ${formatKes(balance)}"
+                                : "${s.balanceDue}: ${formatKes(balance.abs())}",
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: balance >= 0 ? Colors.green : Colors.red,
+                              color: balance >= 0
+                                  ? const Color(0xFF059669)
+                                  : theme.colorScheme.error,
                             ),
                           ),
                           const SizedBox(height: 12),
                           SizedBox(
-                            height: 46,
-                            child: ElevatedButton(
+                            height: 50,
+                            child: FilledButton(
                               onPressed: cart.isEmpty ? null : _checkout,
-                              child: const Text("Checkout"),
+                              child: Text(s.checkout),
                             ),
                           ),
                         ],

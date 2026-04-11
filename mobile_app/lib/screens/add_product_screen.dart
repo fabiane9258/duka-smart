@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
+import '../l10n/app_strings.dart';
 import '../models/product.dart';
 
 class AddProductScreen extends StatefulWidget {
@@ -16,15 +17,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final TextEditingController quantityController = TextEditingController();
 
   void saveProduct() async {
-
+    final s = AppStrings.of(context);
     if (nameController.text.isEmpty ||
         priceController.text.isEmpty ||
         quantityController.text.isEmpty) {
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill all fields")),
+        SnackBar(content: Text(s.fillAllFields)),
       );
-
       return;
     }
 
@@ -33,7 +32,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     if (price == null || quantity == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter valid numbers for price and quantity")),
+        SnackBar(content: Text(s.invalidNumbers)),
       );
       return;
     }
@@ -48,7 +47,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       await DatabaseHelper.instance.insertProduct(product);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Product Saved")),
+        SnackBar(content: Text(AppStrings.of(context).productSavedSnack)),
       );
 
       // Clear form fields for next product
@@ -64,58 +63,46 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   @override
   Widget build(BuildContext context) {
-
+    final s = AppStrings.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Add Product"),
+        title: Text(s.addProductTitle),
       ),
-
       body: Padding(
         padding: const EdgeInsets.all(16),
-
         child: Column(
           children: [
-
             TextField(
               controller: nameController,
-              decoration: const InputDecoration(
-                labelText: "Product Name",
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.productName,
               ),
             ),
-
             const SizedBox(height: 16),
-
             TextField(
               controller: priceController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: "Price",
-                border: OutlineInputBorder(),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: s.priceKsh,
               ),
             ),
-
             const SizedBox(height: 16),
-
             TextField(
               controller: quantityController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: "Quantity",
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.quantity,
               ),
             ),
-
             const SizedBox(height: 20),
-
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: FilledButton(
                 onPressed: saveProduct,
-                child: const Text("Save Product"),
+                child: Text(s.saveProduct),
               ),
-            )
-
+            ),
           ],
         ),
       ),

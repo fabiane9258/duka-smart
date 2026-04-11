@@ -2,7 +2,9 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../models/expense.dart';
 import '../models/product.dart';
+import '../models/product_sales_stats.dart';
 import '../models/sale.dart';
 import '../models/sale_item.dart';
 
@@ -12,6 +14,7 @@ class DatabaseHelper {
   static final List<Product> _webProducts = [];
   static final List<Sale> _webSales = [];
   static final List<SaleItem> _webSaleItems = [];
+  static final List<Expense> _webExpenses = [];
 
   DatabaseHelper._init();
 
@@ -30,7 +33,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -68,6 +71,15 @@ class DatabaseHelper {
         FOREIGN KEY (sale_id) REFERENCES sales(id)
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE expenses(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL NOT NULL,
+        note TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -92,6 +104,16 @@ class DatabaseHelper {
           quantity INTEGER,
           subtotal REAL,
           FOREIGN KEY (sale_id) REFERENCES sales(id)
+        )
+      ''');
+    }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS expenses(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          amount REAL NOT NULL,
+          note TEXT,
+          created_at TEXT NOT NULL
         )
       ''');
     }
@@ -269,4 +291,314 @@ class DatabaseHelper {
     );
     return result.map((row) => SaleItem.fromMap(row)).toList();
   }
+
+  /// Inclusive start, exclusive end, in the device's local calendar.
+  static (DateTime, DateTime) _localDayBounds(DateTime reference) {
+    final local = reference.toLocal();
+    final start = DateTime(local.year, local.month, local.day);
+    final end = start.add(const Duration(days: 1));
+    return (start, end);
+  }
+
+  static bool _saleIsInLocalRange(
+    Sale sale,
+    DateTime rangeStart,
+    DateTime rangeEnd,
+  ) {
+    final t = DateTime.tryParse(sale.createdAt)?.toLocal();
+    if (t == null) return false;
+    return !t.isBefore(rangeStart) && t.isBefore(rangeEnd);
+  }
+
+  Future<double> getTotalRevenue() async {
+    if (kIsWeb) {
+      return _webSales.fold<double>(0, (sum, s) => sum + s.totalAmount);
+    }
+    final db = await instance.database;
+    final rows = await db.rawQuery(
+      'SELECT COALESCE(SUM(total_amount), 0) AS t FROM sales',
+    );
+    return (rows.first['t'] as num).toDouble();
+  }
+
+  /// Sum of [Sale.totalAmount] for sales that fall on the same local calendar
+  /// day as [day].
+  Future<double> getRevenueForLocalDay(DateTime day) async {
+    final (start, end) = _localDayBounds(day);
+    if (kIsWeb) {
+      return _webSales
+          .where((s) => _saleIsInLocalRange(s, start, end))
+          .fold<double>(0, (sum, s) => sum + s.totalAmount);
+    }
+    final db = await instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(total_amount), 0) AS t
+      FROM sales
+      WHERE created_at >= ? AND created_at < ?
+      ''',
+      [start.toIso8601String(), end.toIso8601String()],
+    );
+    return (rows.first['t'] as num).toDouble();
+  }
+
+  Future<List<ProductSalesStats>> getTopSellingProducts({int limit = 10}) async {
+    if (kIsWeb) {
+      final map = <int, _Agg>{};
+      for (final item in _webSaleItems) {
+        map.update(
+          item.productId,
+          (a) => _Agg(
+            productName: item.productName,
+            unitsSold: a.unitsSold + item.quantity,
+            revenue: a.revenue + item.subtotal,
+          ),
+          ifAbsent: () => _Agg(
+            productName: item.productName,
+            unitsSold: item.quantity,
+            revenue: item.subtotal,
+          ),
+        );
+      }
+      final list = map.entries
+          .map(
+            (e) => ProductSalesStats(
+              productId: e.key,
+              productName: e.value.productName,
+              unitsSold: e.value.unitsSold,
+              revenue: e.value.revenue,
+            ),
+          )
+          .toList()
+        ..sort((a, b) => b.unitsSold.compareTo(a.unitsSold));
+      if (list.length <= limit) return list;
+      return list.sublist(0, limit);
+    }
+
+    final db = await instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT product_id, product_name,
+             SUM(quantity) AS total_qty,
+             SUM(subtotal) AS total_rev
+      FROM sale_items
+      GROUP BY product_id, product_name
+      ORDER BY total_qty DESC
+      LIMIT ?
+      ''',
+      [limit],
+    );
+    return rows
+        .map(
+          (row) => ProductSalesStats(
+            productId: row['product_id'] as int,
+            productName: row['product_name'] as String,
+            unitsSold: (row['total_qty'] as num).toInt(),
+            revenue: (row['total_rev'] as num).toDouble(),
+          ),
+        )
+        .toList();
+  }
+
+  static (DateTime, DateTime) _localCalendarRangeBounds(
+    DateTime rangeStartDay,
+    DateTime rangeEndDay,
+  ) {
+    final s = rangeStartDay.toLocal();
+    final e = rangeEndDay.toLocal();
+    final start = DateTime(s.year, s.month, s.day);
+    final endExclusive =
+        DateTime(e.year, e.month, e.day).add(const Duration(days: 1));
+    return (start, endExclusive);
+  }
+
+  static bool _expenseInRange(
+    Expense e,
+    DateTime rangeStart,
+    DateTime rangeEndExclusive,
+  ) {
+    final t = DateTime.tryParse(e.createdAt)?.toLocal();
+    if (t == null) return false;
+    return !t.isBefore(rangeStart) && t.isBefore(rangeEndExclusive);
+  }
+
+  Future<int> insertExpense({
+    required double amount,
+    String? note,
+    DateTime? at,
+  }) async {
+    final when = (at ?? DateTime.now()).toIso8601String();
+    if (kIsWeb) {
+      final id = _webExpenses.length + 1;
+      _webExpenses.add(
+        Expense(id: id, amount: amount, note: note, createdAt: when),
+      );
+      return id;
+    }
+    final db = await instance.database;
+    return db.insert(
+      'expenses',
+      Expense(amount: amount, note: note, createdAt: when).toMap()
+        ..remove('id'),
+    );
+  }
+
+  Future<double> getTotalExpensesForLocalDay(DateTime day) async {
+    final (start, end) = _localDayBounds(day);
+    if (kIsWeb) {
+      return _webExpenses
+          .where((e) => _expenseInRange(e, start, end))
+          .fold<double>(0, (a, e) => a + e.amount);
+    }
+    final db = await instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(amount), 0) AS t
+      FROM expenses
+      WHERE created_at >= ? AND created_at < ?
+      ''',
+      [start.toIso8601String(), end.toIso8601String()],
+    );
+    return (rows.first['t'] as num).toDouble();
+  }
+
+  /// Inclusive calendar [rangeStartDay] through [rangeEndDay] (local).
+  Future<double> getRevenueBetweenLocalDays(
+    DateTime rangeStartDay,
+    DateTime rangeEndDay,
+  ) async {
+    final (start, endExclusive) =
+        _localCalendarRangeBounds(rangeStartDay, rangeEndDay);
+    if (kIsWeb) {
+      return _webSales
+          .where((s) => _saleIsInLocalRange(s, start, endExclusive))
+          .fold<double>(0, (a, s) => a + s.totalAmount);
+    }
+    final db = await instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(total_amount), 0) AS t
+      FROM sales
+      WHERE created_at >= ? AND created_at < ?
+      ''',
+      [start.toIso8601String(), endExclusive.toIso8601String()],
+    );
+    return (rows.first['t'] as num).toDouble();
+  }
+
+  Future<double> getTotalExpensesBetweenLocalDays(
+    DateTime rangeStartDay,
+    DateTime rangeEndDay,
+  ) async {
+    final (start, endExclusive) =
+        _localCalendarRangeBounds(rangeStartDay, rangeEndDay);
+    if (kIsWeb) {
+      return _webExpenses
+          .where((e) => _expenseInRange(e, start, endExclusive))
+          .fold<double>(0, (a, e) => a + e.amount);
+    }
+    final db = await instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(amount), 0) AS t
+      FROM expenses
+      WHERE created_at >= ? AND created_at < ?
+      ''',
+      [start.toIso8601String(), endExclusive.toIso8601String()],
+    );
+    return (rows.first['t'] as num).toDouble();
+  }
+
+  Future<List<ProductSalesStats>> getTopSellingProductsInLocalDayRange({
+    required DateTime rangeStartDay,
+    required DateTime rangeEndDay,
+    int limit = 10,
+  }) async {
+    final (start, endExclusive) =
+        _localCalendarRangeBounds(rangeStartDay, rangeEndDay);
+    if (kIsWeb) {
+      final saleIds = _webSales
+          .where((s) => _saleIsInLocalRange(s, start, endExclusive))
+          .map((s) => s.id)
+          .whereType<int>()
+          .toSet();
+      final map = <int, _Agg>{};
+      for (final item in _webSaleItems) {
+        if (!saleIds.contains(item.saleId)) continue;
+        map.update(
+          item.productId,
+          (a) => _Agg(
+            productName: item.productName,
+            unitsSold: a.unitsSold + item.quantity,
+            revenue: a.revenue + item.subtotal,
+          ),
+          ifAbsent: () => _Agg(
+            productName: item.productName,
+            unitsSold: item.quantity,
+            revenue: item.subtotal,
+          ),
+        );
+      }
+      final list = map.entries
+          .map(
+            (e) => ProductSalesStats(
+              productId: e.key,
+              productName: e.value.productName,
+              unitsSold: e.value.unitsSold,
+              revenue: e.value.revenue,
+            ),
+          )
+          .toList()
+        ..sort((a, b) => b.unitsSold.compareTo(a.unitsSold));
+      if (list.length <= limit) return list;
+      return list.sublist(0, limit);
+    }
+
+    final db = await instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT si.product_id, si.product_name,
+             SUM(si.quantity) AS total_qty,
+             SUM(si.subtotal) AS total_rev
+      FROM sale_items si
+      INNER JOIN sales s ON s.id = si.sale_id
+      WHERE s.created_at >= ? AND s.created_at < ?
+      GROUP BY si.product_id, si.product_name
+      ORDER BY total_qty DESC
+      LIMIT ?
+      ''',
+      [start.toIso8601String(), endExclusive.toIso8601String(), limit],
+    );
+    return rows
+        .map(
+          (row) => ProductSalesStats(
+            productId: row['product_id'] as int,
+            productName: row['product_name'] as String,
+            unitsSold: (row['total_qty'] as num).toInt(),
+            revenue: (row['total_rev'] as num).toDouble(),
+          ),
+        )
+        .toList();
+  }
+
+  Future<int> deleteProduct(int id) async {
+    if (kIsWeb) {
+      _webProducts.removeWhere((p) => p.id == id);
+      return 1;
+    }
+    final db = await instance.database;
+    return db.delete('products', where: 'id = ?', whereArgs: [id]);
+  }
+}
+
+class _Agg {
+  final String productName;
+  final int unitsSold;
+  final double revenue;
+
+  _Agg({
+    required this.productName,
+    required this.unitsSold,
+    required this.revenue,
+  });
 }

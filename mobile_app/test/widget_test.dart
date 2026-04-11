@@ -1,30 +1,33 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:mobile_app/app_settings.dart';
 import 'package:mobile_app/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  late AppSettingsController settings;
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    settings = AppSettingsController();
+    await settings.load();
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('App loads shell, greeting, and navigation', (WidgetTester tester) async {
+    await tester.pumpWidget(DukaSmartRoot(settings: settings));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DukaSmart'), findsOneWidget);
+    expect(
+      find.textContaining('Hi'),
+      findsOneWidget,
+    );
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Inventory'), findsOneWidget);
+    expect(find.text('Sales'), findsOneWidget);
+    expect(find.text('Profile'), findsOneWidget);
   });
 }

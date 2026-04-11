@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
+import '../l10n/app_strings.dart';
 import '../models/sale.dart';
 import '../models/sale_item.dart';
+import '../utils/currency.dart';
 
 class SalesHistoryScreen extends StatefulWidget {
-  const SalesHistoryScreen({super.key});
+  const SalesHistoryScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<SalesHistoryScreen> createState() => _SalesHistoryScreenState();
@@ -53,6 +57,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     if (sale.id == null) return;
     final items = await DatabaseHelper.instance.getSaleItemsBySaleId(sale.id!);
     if (!mounted) return;
+    final s = AppStrings.of(context);
 
     showModalBottomSheet(
       context: context,
@@ -64,15 +69,16 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                "Sale Details",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                s.saleDetails,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
-              Text("Date: ${formatDate(sale.createdAt)}"),
+              Text("${s.dateLabel}: ${formatDate(sale.createdAt)}"),
               const SizedBox(height: 12),
               if (items.isEmpty)
-                const Text("No items in this sale")
+                Text(s.noLineItemsInSale)
               else
                 ...items.map(
                   (item) => Padding(
@@ -82,15 +88,15 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                         Expanded(
                           child: Text("${item.productName} x${item.quantity}"),
                         ),
-                        Text("\$${item.subtotal.toStringAsFixed(2)}"),
+                        Text(formatKes(item.subtotal)),
                       ],
                     ),
                   ),
                 ),
               const Divider(),
-              Text("Total: \$${sale.totalAmount.toStringAsFixed(2)}"),
-              Text("Paid: \$${sale.amountPaid.toStringAsFixed(2)}"),
-              Text("Change: \$${sale.changeAmount.toStringAsFixed(2)}"),
+              Text("${s.totalShort}: ${formatKes(sale.totalAmount)}"),
+              Text("${s.paidShort}: ${formatKes(sale.amountPaid)}"),
+              Text("${s.changeLabel}: ${formatKes(sale.changeAmount)}"),
               const SizedBox(height: 8),
             ],
           ),
@@ -101,20 +107,23 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Sales History"),
-      ),
-      body: isLoading
+    final s = AppStrings.of(context);
+    final body = isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: loadSales,
               child: sales.isEmpty
-                  ? const Center(
-                      child: Text(
-                        "No sales recorded yet",
-                        style: TextStyle(fontSize: 16),
-                      ),
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        const SizedBox(height: 80),
+                        Center(
+                          child: Text(
+                            s.noSalesYet,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      ],
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.all(12),
@@ -129,11 +138,11 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(
-                              "${formatDate(sale.createdAt)}\nPaid: \$${sale.amountPaid.toStringAsFixed(2)} | Change: \$${sale.changeAmount.toStringAsFixed(2)}",
+                              "${formatDate(sale.createdAt)}\nPaid: ${formatKes(sale.amountPaid)} | Change: ${formatKes(sale.changeAmount)}",
                             ),
                             isThreeLine: true,
                             trailing: Text(
-                              "\$${sale.totalAmount.toStringAsFixed(2)}",
+                              formatKes(sale.totalAmount),
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
@@ -144,7 +153,17 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                         );
                       },
                     ),
-            ),
+            );
+
+    if (widget.embedded) {
+      return body;
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(s.salesHistoryTitle),
+      ),
+      body: body,
     );
   }
 }
